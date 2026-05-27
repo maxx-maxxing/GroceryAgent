@@ -64,6 +64,7 @@ def _score_product(term, product):
     if product.get("upc"):
         confidence += 0.03
     confidence += _package_fit_bonus(term, product_text)
+    confidence += _format_fit_adjustment(term, product)
 
     return {
         "product": product,
@@ -179,5 +180,34 @@ def _package_fit_bonus(term, product_text):
 
     if is_soda and has_bottle:
         return -0.02
+
+    return 0
+
+
+def _format_fit_adjustment(term, product):
+    term_tokens = set(_meaningful_tokens(term))
+    description_tokens = set(_tokenize(product.get("description", "")))
+    category_tokens = set(_tokenize(" ".join(product.get("categories") or [])))
+    non_brand_tokens = description_tokens | category_tokens
+
+    bread_alternates = {
+        "bagel",
+        "bagels",
+        "bun",
+        "buns",
+        "roll",
+        "rolls",
+        "english",
+        "muffin",
+        "muffins",
+        "crumb",
+        "crumbs",
+    }
+
+    if "bread" in term_tokens and not term_tokens.intersection(bread_alternates):
+        if description_tokens.intersection(bread_alternates):
+            return -0.35
+        if non_brand_tokens.intersection({"bread", "loaf"}):
+            return 0.08
 
     return 0
