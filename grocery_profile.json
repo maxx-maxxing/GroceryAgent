@@ -1,0 +1,52 @@
+{
+  "household_size": 2,
+  "budget_min": 100,
+  "budget_max": 150,
+  "brand_preference": "Prefer name brands and quality over aggressive bargain optimization.",
+  "weekly_structure": {
+    "dinners": 4,
+    "sandwich_lunch_support": true,
+    "drinks_staples": true
+  },
+  "meal_preferences": {
+    "styles": [
+      "rice dishes",
+      "pasta/noodle dishes",
+      "protein/carb/veggie trio",
+      "fun flavorful meals"
+    ],
+    "cook_time_preference": "30 minutes preferred; 30-45 minutes occasionally okay"
+  },
+  "permanent_drink_slots": [
+    {
+      "slot": "Coke Zero or Coke Zero variant",
+      "term": "Cherry Coke Zero",
+      "quantity": 1
+    },
+    {
+      "slot": "Liquid Death flavored water",
+      "term": "Liquid Death Severed Lime",
+      "quantity": 1
+    },
+    {
+      "slot": "Arizona Green Tea jug, preferably zero sugar",
+      "term": "Arizona Green Tea Zero Sugar Jug",
+      "quantity": 1
+    }
+  ],
+  "sandwich_core": [
+    {
+      "term": "Dave's Killer Bread",
+      "quantity": 1
+    },
+    {
+      "term": "Boar's Head Ovengold Turkey",
+      "quantity": 1
+    },
+    {
+      "term": "Tillamook Havarti sliced cheese",
+      "quantity": 1
+    }
+  ],
+  "weekly_staples": []
+}

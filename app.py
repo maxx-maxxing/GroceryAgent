@@ -5,6 +5,7 @@ from flask import Flask, jsonify, request
 from config import load_config
 from kroger_client import KrogerApiError, KrogerClient
 from product_selector import select_best_product
+from weekly_cart_builder import WeeklyCartBuilderError, build_weekly_cart_plan
 
 
 settings = load_config()
@@ -193,75 +194,121 @@ def create_app(client=None):
                 }
             ), 400
 
-        summary = {
-            "dry_run": dry_run,
-            "attempted_count": len(items),
-            "selected": [],
-            "added": [],
-            "needs_review": [],
-            "failed": [],
-        }
+        return jsonify(_process_cart_items(client, items, dry_run))
 
-        for index, raw_item in enumerate(items):
-            parsed_item, validation_error = _parse_add_many_item(index, raw_item)
-            if validation_error:
-                summary["failed"].append(validation_error)
-                continue
+    @app.route("/build_weekly_cart")
+    def build_weekly_cart():
+        dry_run, dry_run_error = _parse_dry_run_param(request.args.get("dry_run", "true"))
+        if dry_run_error:
+            return jsonify(dry_run_error), 400
 
-            selection_result = _select_product_for_term(
-                client,
-                parsed_item["term"],
-                parsed_item["quantity"],
-                index,
-            )
+        try:
+            plan = build_weekly_cart_plan()
+        except WeeklyCartBuilderError as exc:
+            return jsonify({"status": "error", "message": str(exc)}), 500
 
-            if selection_result["status"] == "failed":
-                summary["failed"].append(selection_result["item"])
-                continue
+        cart_items = plan["cart_items"]
+        summary = _process_cart_items(client, cart_items, dry_run)
 
-            if selection_result["status"] == "needs_review":
-                summary["needs_review"].append(selection_result["item"])
-                continue
-
-            selected_item = selection_result["item"]
-            summary["selected"].append(selected_item)
-
-            if dry_run:
-                continue
-
-            upc = selected_item["upc"]
-            quantity = selected_item["quantity"]
-            try:
-                cart_response, _payload = client.add_to_cart(upc, quantity)
-            except KrogerApiError as exc:
-                failed_item = {
-                    **selected_item,
-                    "status": "cart_error",
-                    "message": str(exc),
-                }
-                summary["failed"].append(failed_item)
-                continue
-
-            added_item = {
-                **selected_item,
-                "cart_status": cart_response.status_code,
+        return jsonify(
+            {
+                "dry_run": dry_run,
+                "meal_plan": plan["meal_plan"],
+                "cart_items": cart_items,
+                "cart_items_count": len(cart_items),
+                "attempted_count": summary["attempted_count"],
+                "selected": summary["selected"],
+                "added": summary["added"],
+                "needs_review": summary["needs_review"],
+                "failed": summary["failed"],
+                "notes": plan["notes"],
             }
-
-            if cart_response.status_code in {200, 201, 204}:
-                summary["added"].append(added_item)
-            else:
-                failed_item = {
-                    **added_item,
-                    "status": "cart_error",
-                    "message": "Kroger cart add failed.",
-                }
-                if cart_response.text:
-                    failed_item["cart_response"] = cart_response.text
-                summary["failed"].append(failed_item)
-
-        return jsonify(summary)
+        )
 
     return app
+
+
+def _process_cart_items(client, items, dry_run):
+    summary = {
+        "dry_run": dry_run,
+        "attempted_count": len(items),
+        "selected": [],
+        "added": [],
+        "needs_review": [],
+        "failed": [],
+    }
+
+    for index, raw_item in enumerate(items):
+        parsed_item, validation_error = _parse_add_many_item(index, raw_item)
+        if validation_error:
+            summary["failed"].append(validation_error)
+            continue
+
+        selection_result = _select_product_for_term(
+            client,
+            parsed_item["term"],
+            parsed_item["quantity"],
+            index,
+        )
+
+        if selection_result["status"] == "failed":
+            summary["failed"].append(selection_result["item"])
+            continue
+
+        if selection_result["status"] == "needs_review":
+            summary["needs_review"].append(selection_result["item"])
+            continue
+
+        selected_item = selection_result["item"]
+        summary["selected"].append(selected_item)
+
+        if dry_run:
+            continue
+
+        upc = selected_item["upc"]
+        quantity = selected_item["quantity"]
+        try:
+            cart_response, _payload = client.add_to_cart(upc, quantity)
+        except KrogerApiError as exc:
+            failed_item = {
+                **selected_item,
+                "status": "cart_error",
+                "message": str(exc),
+            }
+            summary["failed"].append(failed_item)
+            continue
+
+        added_item = {
+            **selected_item,
+            "cart_status": cart_response.status_code,
+        }
+
+        if cart_response.status_code in {200, 201, 204}:
+            summary["added"].append(added_item)
+        else:
+            failed_item = {
+                **added_item,
+                "status": "cart_error",
+                "message": "Kroger cart add failed.",
+            }
+            if cart_response.text:
+                failed_item["cart_response"] = cart_response.text
+            summary["failed"].append(failed_item)
+
+    return summary
+
+
+def _parse_dry_run_param(value):
+    normalized = str(value).strip().lower()
+    if normalized in {"true", "1", "yes", "y"}:
+        return True, None
+    if normalized in {"false", "0", "no", "n"}:
+        return False, None
+
+    return None, {
+        "status": "error",
+        "message": "dry_run must be true or false.",
+    }
 
 
 def _parse_quantity(value):

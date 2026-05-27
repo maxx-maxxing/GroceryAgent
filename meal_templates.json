@@ -1,0 +1,57 @@
+[
+  {
+    "name": "Korean Beef Rice Bowls",
+    "style": "rice bowl",
+    "category": "rice dishes",
+    "approx_cook_time_minutes": 30,
+    "cart_items": [
+      {"term": "Ground beef 1 lb", "quantity": 1},
+      {"term": "Jasmine rice", "quantity": 1},
+      {"term": "Broccoli florets", "quantity": 1},
+      {"term": "Gochujang sauce", "quantity": 1},
+      {"term": "Green onions", "quantity": 1}
+    ]
+  },
+  {
+    "name": "Creamy Cajun Chicken Pasta",
+    "style": "pasta",
+    "category": "pasta/noodle dishes",
+    "approx_cook_time_minutes": 35,
+    "cart_items": [
+      {"term": "Boneless skinless chicken breast", "quantity": 1},
+      {"term": "Penne pasta", "quantity": 1},
+      {"term": "Heavy cream", "quantity": 1},
+      {"term": "Cajun seasoning", "quantity": 1},
+      {"term": "Parmesan cheese", "quantity": 1},
+      {"term": "Bell pepper", "quantity": 2}
+    ]
+  },
+  {
+    "name": "Salmon Rice Broccoli",
+    "style": "protein/carb/veggie trio",
+    "category": "protein/carb/veggie trio",
+    "approx_cook_time_minutes": 30,
+    "cart_items": [
+      {"term": "Salmon fillet", "quantity": 1},
+      {"term": "Jasmine rice", "quantity": 1},
+      {"term": "Broccoli florets", "quantity": 1},
+      {"term": "Lemon", "quantity": 2}
+    ]
+  },
+  {
+    "name": "Street Corn Chicken Bowls",
+    "style": "rice bowl",
+    "category": "fun flavorful meals",
+    "approx_cook_time_minutes": 40,
+    "cart_items": [
+      {"term": "Boneless skinless chicken thighs", "quantity": 1},
+      {"term": "White rice", "quantity": 1},
+      {"term": "Frozen corn", "quantity": 1},
+      {"term": "Cotija cheese", "quantity": 1},
+      {"term": "Sour cream", "quantity": 1},
+      {"term": "Lime", "quantity": 2},
+      {"term": "Cilantro", "quantity": 1},
+      {"term": "Taco seasoning", "quantity": 1}
+    ]
+  }
+]
