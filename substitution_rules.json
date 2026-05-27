@@ -1,0 +1,65 @@
+{
+  "standing_staples": [
+    {
+      "id": "liquid_death_flavored_water",
+      "name": "Liquid Death flavored water",
+      "primary_term": "Liquid Death Severed Lime",
+      "fallback_terms": [
+        "Liquid Death Lime",
+        "Liquid Death Sparkling Water Lime",
+        "Liquid Death Berry It Alive",
+        "Liquid Death Mango Chainsaw",
+        "Liquid Death Convicted Melon",
+        "Liquid Death flavored sparkling water",
+        "Liquid Death sparkling water"
+      ]
+    },
+    {
+      "id": "arizona_green_tea",
+      "name": "Arizona Green Tea jug, preferably zero sugar",
+      "primary_term": "Arizona Green Tea Zero Sugar Jug",
+      "fallback_terms": [
+        "Arizona Diet Green Tea",
+        "Arizona Green Tea Jug",
+        "AriZona Green Tea",
+        "Gold Peak Zero Sugar Tea",
+        "Pure Leaf Zero Sugar Tea"
+      ]
+    },
+    {
+      "id": "daves_killer_bread",
+      "name": "Dave's Killer Bread loaf",
+      "primary_term": "Dave's Killer Bread",
+      "fallback_terms": [
+        "Dave's Killer Bread 21 Whole Grains and Seeds",
+        "Dave's Killer Bread Good Seed",
+        "Dave's Killer Bread Thin Sliced",
+        "Dave's Killer Bread Organic Bread"
+      ]
+    },
+    {
+      "id": "boars_head_deli_meat",
+      "name": "Boar's Head deli meat",
+      "primary_term": "Boar's Head Ovengold Turkey",
+      "fallback_terms": [
+        "Boar's Head Turkey",
+        "Boar's Head Honey Maple Turkey",
+        "Boar's Head deli turkey",
+        "Boar's Head ham",
+        "Private Selection deli turkey"
+      ]
+    },
+    {
+      "id": "tillamook_sliced_cheese",
+      "name": "Tillamook sliced cheese",
+      "primary_term": "Tillamook Havarti sliced cheese",
+      "fallback_terms": [
+        "Tillamook Havarti",
+        "Tillamook Sharp Cheddar Slices",
+        "Tillamook Cheddar Slices",
+        "Tillamook Swiss Slices",
+        "Tillamook Pepper Jack Slices"
+      ]
+    }
+  ]
+}

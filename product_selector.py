@@ -111,6 +111,8 @@ def _normalize_text(value):
     text = re.sub(r"boar'?s", "boar", text)
     text = re.sub(r"zero sugar", "zero", text)
     text = re.sub(r"\bpk\b", "pack", text)
+    text = re.sub(r"\bsliced?\b|\bslices\b", "slice", text)
+    text = re.sub(r"\bloaves\b", "loaf", text)
     text = re.sub(r"[^a-z0-9]+", " ", text)
     return re.sub(r"\s+", " ", text).strip()
 
@@ -193,8 +195,11 @@ def _format_fit_adjustment(term, product):
     bread_alternates = {
         "bagel",
         "bagels",
+        "breakfast",
         "bun",
         "buns",
+        "flatbread",
+        "flatbreads",
         "roll",
         "rolls",
         "english",
@@ -206,8 +211,8 @@ def _format_fit_adjustment(term, product):
 
     if "bread" in term_tokens and not term_tokens.intersection(bread_alternates):
         if description_tokens.intersection(bread_alternates):
-            return -0.35
-        if non_brand_tokens.intersection({"bread", "loaf"}):
+            return -1
+        if non_brand_tokens.intersection({"bread", "loaf", "slice"}):
             return 0.08
 
     return 0

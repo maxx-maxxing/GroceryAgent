@@ -40,6 +40,11 @@ The following features are already confirmed working and should be preserved:
 - Invalid items go to `failed`.
 - A live `/cart/add_many` test with Cherry Coke Zero was confirmed in the real King Soopers cart.
 - The verified Cherry Coke Zero product was Coca-Cola® Zero Sugar Cherry Soda Cans, UPC `0004900004751`, `cart_status` `204`.
+- Phase 4 Weekly Cart MVP is complete and committed in `711ba49 Add weekly cart MVP dry run`.
+- `/build_weekly_cart?dry_run=true` exists and was dry-run tested successfully.
+- `/build_weekly_cart?dry_run=true` generated a 4-meal weekly cart plan and routed it through the same product-selection/cart processing flow as `/cart/add_many`.
+- The verified Phase 4 dry run selected 22 of 27 items, with 5 `needs_review`, 0 `failed`, and 0 `added`.
+- `/build_weekly_cart?dry_run=false` exists but has intentionally not been live-tested yet.
 - Real cart insertion into the user's actual King Soopers cart has been confirmed.
 
 Do not break these behaviors during refactors.
@@ -58,6 +63,29 @@ Do not break these behaviors during refactors.
 - Live mode must never checkout or place an order.
 - The user manually verifies the real King Soopers cart after live tests.
 - Live verification confirmed Cherry Coke Zero selected Coca-Cola® Zero Sugar Cherry Soda Cans, UPC `0004900004751`, with `cart_status` `204`.
+
+---
+
+## Verified Phase 4 Dry Run Behavior
+
+- Endpoint: `GET /build_weekly_cart?dry_run=true`
+- Does not touch the real cart.
+- Returns `meal_plan`, `cart_items_count`, `selected`, `added`, `needs_review`, `failed`, and `notes`.
+- Dry-run summary from committed Phase 4 MVP:
+  - meal count: 4
+  - cart item count: 27
+  - selected count: 22
+  - needs_review count: 5
+  - failed count: 0
+  - added count: 0
+- Current known `needs_review` terms:
+  1. Liquid Death Severed Lime
+  2. Arizona Green Tea Zero Sugar Jug
+  3. Dave's Killer Bread
+  4. Boar's Head Ovengold Turkey
+  5. Tillamook Havarti sliced cheese
+- `/build_weekly_cart?dry_run=false` must not be run unless the user explicitly requests it after inspecting an acceptable dry run.
+- Live weekly cart adding must remain blocked until standing staples resolution improves and a dry run has acceptable `selected` / `needs_review` results.
 
 ---
 
@@ -391,10 +419,16 @@ Live mode must never checkout or place an order. The user manually reviews and a
 
 ---
 
-### Phase 4: Weekly Cart MVP - Next Active Phase
+### Phase 4: Weekly Cart MVP - Complete
 
 Goal:
 Build a weekly cart from a reusable grocery profile.
+
+Status:
+- Complete and committed in `711ba49 Add weekly cart MVP dry run`.
+- Dry-run verified only; live weekly cart adding has not been tested.
+- The dry run generated a 4-meal weekly cart plan and routed items through the same product-selection/cart processing flow as `/cart/add_many`.
+- Current dry-run result: 22 selected of 27 cart items, 5 `needs_review`, 0 `failed`, 0 `added`.
 
 Files:
 - `grocery_profile.json`
@@ -415,13 +449,34 @@ Behavior:
 6. Return structured cart plan.
 7. In dry-run mode, do not add to cart.
 
-Live mode:
+Live mode exists but is blocked pending safer dry-run quality:
 
 ```text
 /build_weekly_cart?dry_run=false
 ```
 
-Should add items to cart only after dry-run behavior is reliable.
+Do not run live weekly cart mode unless the user explicitly asks for it after dry-run inspection. It should add only confident matches and must never checkout or place an order.
+
+---
+
+### Phase 4.1: Standing Staples Resolution Fix - Next Active Phase
+
+Goal:
+Improve product search and conservative fallback handling for standing staples that currently land in `needs_review`.
+
+Problem terms:
+1. Liquid Death Severed Lime
+2. Arizona Green Tea Zero Sugar Jug
+3. Dave's Killer Bread
+4. Boar's Head Ovengold Turkey
+5. Tillamook Havarti sliced cheese
+
+Behavior:
+- Try ordered fallback search terms for standing staples.
+- Add at most one selected product per conceptual staple.
+- Include the fallback search term used in the response when a fallback resolves an item.
+- Prefer `needs_review` over a bad automatic selection.
+- Preserve the Dave's Killer Bread safety rule: prefer loaf/sliced bread and reject bagels, buns, rolls, English muffins, breakfast bread, and similar non-loaf formats unless explicitly requested.
 
 ---
 
@@ -557,7 +612,7 @@ Prompt:
 ```text
 Read codex_context.md.
 
-Start Phase 4: Weekly Cart MVP.
+Start Phase 4.1: Standing Staples Resolution Fix.
 
 Requirements:
 - Preserve OAuth login and callback.
@@ -567,9 +622,10 @@ Requirements:
 - Preserve /cart/add?upc=...&quantity=...
 - Preserve /cart/add_by_term?term=...&quantity=...
 - Preserve /cart/add_many dry-run and live behavior.
-- Add a reusable weekly cart builder in small, testable increments.
-- Start with dry-run weekly cart generation before any live adds.
-- Use grocery profile and meal template files if added.
+- Preserve /build_weekly_cart?dry_run=true.
+- Do not run /build_weekly_cart?dry_run=false unless explicitly requested after dry-run inspection.
+- Add ordered fallback search terms for standing staples that landed in needs_review.
+- Add at most one selected product per conceptual staple.
 - Product search should use existing preferred store filtering where available.
 - Product selection should remain conservative.
 - If confidence is low, send the item to needs_review.
@@ -577,7 +633,10 @@ Requirements:
 - Never print access_token or refresh_token.
 - After changes, provide exact test commands and expected outputs.
 
+Do not add pantry memory yet.
+Do not add meal history yet.
 Do not add a dashboard yet.
+Do not implement price optimization yet.
 Do not change OAuth scopes unless absolutely necessary.
 ```
 
@@ -604,8 +663,10 @@ The next milestone is complete when:
 
 1. Existing routes still work.
 2. `/cart/add_many` dry-run and live behavior still work.
-3. `/build_weekly_cart?dry_run=true` or equivalent Phase 4 dry-run flow generates a structured weekly cart plan.
-4. The weekly plan includes dinners, sandwich support, drinks, and staples from the household profile.
-5. Low-confidence items are sent to `needs_review` instead of being added automatically.
-6. No tokens or secrets are printed.
-7. Live cart adds, if enabled later, never checkout or place an order.
+3. `/build_weekly_cart?dry_run=true` still generates a structured weekly cart plan.
+4. Standing staples use ordered fallback search terms.
+5. Needs-review count improves if Kroger search returns confident candidates.
+6. Low-confidence items are sent to `needs_review` instead of being added automatically.
+7. Dave's Killer Bread does not select bagels, buns, rolls, or other non-loaf products.
+8. No tokens or secrets are printed.
+9. Live cart adds, if enabled later, never checkout or place an order.

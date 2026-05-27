@@ -5,6 +5,7 @@ from pathlib import Path
 
 DEFAULT_PROFILE_PATH = Path(__file__).with_name("grocery_profile.json")
 DEFAULT_MEAL_TEMPLATES_PATH = Path(__file__).with_name("meal_templates.json")
+DEFAULT_SUBSTITUTION_RULES_PATH = Path(__file__).with_name("substitution_rules.json")
 
 
 class WeeklyCartBuilderError(Exception):
@@ -14,9 +15,11 @@ class WeeklyCartBuilderError(Exception):
 def build_weekly_cart_plan(
     profile_path=DEFAULT_PROFILE_PATH,
     meal_templates_path=DEFAULT_MEAL_TEMPLATES_PATH,
+    substitution_rules_path=DEFAULT_SUBSTITUTION_RULES_PATH,
 ):
     profile = _load_json_object(profile_path, "grocery profile")
     meal_templates = _load_json_list(meal_templates_path, "meal templates")
+    substitutions = _load_substitution_rules(substitution_rules_path)
 
     dinner_count = _requested_dinner_count(profile)
     selected_meals = _select_meals(meal_templates, dinner_count)
@@ -29,14 +32,26 @@ def build_weekly_cart_plan(
         raw_items,
         profile.get("permanent_drink_slots", []),
         "permanent drink slots",
+        substitutions,
     )
-    _extend_cart_items(raw_items, profile.get("sandwich_core", []), "sandwich core")
-    _extend_cart_items(raw_items, profile.get("weekly_staples", []), "weekly staples")
+    _extend_cart_items(
+        raw_items,
+        profile.get("sandwich_core", []),
+        "sandwich core",
+        substitutions,
+    )
+    _extend_cart_items(
+        raw_items,
+        profile.get("weekly_staples", []),
+        "weekly staples",
+        substitutions,
+    )
 
     cart_items, dedupe_notes = _deduplicate_cart_items(raw_items)
     notes = [
         f"Selected the first {len(selected_meals)} meal templates for the Phase 4 MVP.",
         "Permanent drinks and sandwich core were included from grocery_profile.json.",
+        "Standing staples use ordered fallback search terms from substitution_rules.json.",
         "Live mode only adds confident product matches and never checks out or places an order.",
     ]
 
@@ -76,6 +91,46 @@ def _load_json(path, label):
         raise WeeklyCartBuilderError(f"Invalid JSON in {label} file: {path}") from exc
 
 
+def _load_substitution_rules(path):
+    try:
+        rules = _load_json_object(path, "substitution rules")
+    except WeeklyCartBuilderError as exc:
+        if str(exc).startswith("Missing substitution rules file"):
+            return {}
+        raise
+
+    substitutions = {}
+    standing_staples = rules.get("standing_staples", [])
+    if not isinstance(standing_staples, list):
+        raise WeeklyCartBuilderError("substitution_rules.standing_staples must be a list.")
+
+    for rule in standing_staples:
+        if not isinstance(rule, dict):
+            raise WeeklyCartBuilderError("Each standing staple rule must be an object.")
+
+        primary_term = rule.get("primary_term", "")
+        if not isinstance(primary_term, str) or not primary_term.strip():
+            raise WeeklyCartBuilderError("Each standing staple rule must include primary_term.")
+
+        fallback_terms = rule.get("fallback_terms", [])
+        if not isinstance(fallback_terms, list):
+            raise WeeklyCartBuilderError("standing staple fallback_terms must be a list.")
+
+        clean_fallbacks = []
+        for fallback_term in fallback_terms:
+            if not isinstance(fallback_term, str) or not fallback_term.strip():
+                raise WeeklyCartBuilderError("standing staple fallback terms must be strings.")
+            clean_fallbacks.append(fallback_term.strip())
+
+        substitutions[_dedupe_key(primary_term)] = {
+            "staple_id": rule.get("id"),
+            "staple_name": rule.get("name") or primary_term.strip(),
+            "fallback_terms": _unique_terms(clean_fallbacks),
+        }
+
+    return substitutions
+
+
 def _requested_dinner_count(profile):
     weekly_structure = profile.get("weekly_structure", {})
     dinner_count = weekly_structure.get("dinners", 4)
@@ -110,15 +165,15 @@ def _select_meals(meal_templates, dinner_count):
     return selected_meals
 
 
-def _extend_cart_items(destination, items, source_label):
+def _extend_cart_items(destination, items, source_label, substitutions=None):
     if not isinstance(items, list):
         raise WeeklyCartBuilderError(f"{source_label} must be a list.")
 
     for item in items:
-        destination.append(_parse_cart_item(item, source_label))
+        destination.append(_parse_cart_item(item, source_label, substitutions or {}))
 
 
-def _parse_cart_item(item, source_label):
+def _parse_cart_item(item, source_label, substitutions):
     if not isinstance(item, dict):
         raise WeeklyCartBuilderError(f"Cart item in {source_label} must be an object.")
 
@@ -142,7 +197,12 @@ def _parse_cart_item(item, source_label):
             f"Cart item quantity in {source_label} must be positive."
         )
 
-    return {"term": term.strip(), "quantity": quantity}
+    parsed_item = {"term": term.strip(), "quantity": quantity}
+    substitution = substitutions.get(_dedupe_key(parsed_item["term"]))
+    if substitution:
+        parsed_item.update(substitution)
+
+    return parsed_item
 
 
 def _deduplicate_cart_items(items):
@@ -182,6 +242,18 @@ def _dedupe_key(term):
     text = re.sub(r"zero sugar", "zero", text)
     text = re.sub(r"[^a-z0-9]+", " ", text)
     return re.sub(r"\s+", " ", text).strip()
+
+
+def _unique_terms(terms):
+    unique = []
+    seen = set()
+    for term in terms:
+        key = _dedupe_key(term)
+        if key in seen:
+            continue
+        seen.add(key)
+        unique.append(term)
+    return unique
 
 
 def _meal_summary(meal):
