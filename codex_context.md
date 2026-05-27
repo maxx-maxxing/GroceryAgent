@@ -43,7 +43,9 @@ The following features are already confirmed working and should be preserved:
 - Phase 4 Weekly Cart MVP is complete and committed in `711ba49 Add weekly cart MVP dry run`.
 - `/build_weekly_cart?dry_run=true` exists and was dry-run tested successfully.
 - `/build_weekly_cart?dry_run=true` generated a 4-meal weekly cart plan and routed it through the same product-selection/cart processing flow as `/cart/add_many`.
-- The verified Phase 4 dry run selected 22 of 27 items, with 5 `needs_review`, 0 `failed`, and 0 `added`.
+- Phase 4.1 Standing Staples Resolution Fix is complete and committed in `8328c24 Improve standing staple fallback resolution`.
+- Phase 4.1 improved the weekly cart dry run from 22 selected / 5 `needs_review` / 0 `failed` to 26 selected / 1 `needs_review` / 0 `failed`.
+- The only current weekly cart dry-run `needs_review` item is `Liquid Death Severed Lime`.
 - `/build_weekly_cart?dry_run=false` exists but has intentionally not been live-tested yet.
 - Real cart insertion into the user's actual King Soopers cart has been confirmed.
 
@@ -66,26 +68,36 @@ Do not break these behaviors during refactors.
 
 ---
 
-## Verified Phase 4 Dry Run Behavior
+## Verified Phase 4.1 Dry Run Behavior
 
 - Endpoint: `GET /build_weekly_cart?dry_run=true`
 - Does not touch the real cart.
 - Returns `meal_plan`, `cart_items_count`, `selected`, `added`, `needs_review`, `failed`, and `notes`.
-- Dry-run summary from committed Phase 4 MVP:
+- Phase 4.1 Standing Staples Resolution Fix is complete.
+- Phase 4.1 commit: `8328c24 Improve standing staple fallback resolution`.
+- Dry-run summary after Phase 4.1:
   - meal count: 4
   - cart item count: 27
-  - selected count: 22
-  - needs_review count: 5
+  - selected count: 26
+  - needs_review count: 1
   - failed count: 0
   - added count: 0
-- Current known `needs_review` terms:
+- Current known `needs_review` term:
   1. Liquid Death Severed Lime
-  2. Arizona Green Tea Zero Sugar Jug
-  3. Dave's Killer Bread
-  4. Boar's Head Ovengold Turkey
-  5. Tillamook Havarti sliced cheese
+- Standing staples focused verification confirmed:
+  - Liquid Death remains `needs_review` because Kroger's best Liquid Death candidate was still water rather than a confident flavored/sparkling product.
+  - Arizona tea resolves via fallback Arizona Diet Green Tea.
+  - Dave's Killer Bread resolves to a loaf and avoids bagels/buns/rolls.
+  - Boar's Head falls back to Private Selection deli turkey.
+  - Tillamook Havarti falls back to Tillamook Sharp Cheddar slices.
 - `/build_weekly_cart?dry_run=false` must not be run unless the user explicitly requests it after inspecting an acceptable dry run.
-- Live weekly cart adding must remain blocked until standing staples resolution improves and a dry run has acceptable `selected` / `needs_review` results.
+- `/build_weekly_cart?dry_run=false` may only be used after the dry-run output is acceptable.
+- Live weekly cart runs must be protected by a review/safety layer:
+  - `dry_run=true` output must be inspected first.
+  - Low-confidence items must not be added.
+  - `needs_review` items must remain separate.
+  - Final checkout must always happen manually in King Soopers.
+- Live weekly cart mode should add only confident matches, skip `needs_review` items, and must never checkout or place an order.
 
 ---
 
@@ -459,7 +471,7 @@ Do not run live weekly cart mode unless the user explicitly asks for it after dr
 
 ---
 
-### Phase 4.1: Standing Staples Resolution Fix - Next Active Phase
+### Phase 4.1: Standing Staples Resolution Fix - Complete
 
 Goal:
 Improve product search and conservative fallback handling for standing staples that currently land in `needs_review`.
@@ -477,6 +489,27 @@ Behavior:
 - Include the fallback search term used in the response when a fallback resolves an item.
 - Prefer `needs_review` over a bad automatic selection.
 - Preserve the Dave's Killer Bread safety rule: prefer loaf/sliced bread and reject bagels, buns, rolls, English muffins, breakfast bread, and similar non-loaf formats unless explicitly requested.
+
+Status:
+- Complete and committed in `8328c24 Improve standing staple fallback resolution`.
+- Weekly cart dry run now resolves 26 of 27 items, with 1 `needs_review` and 0 `failed`.
+- The only current `needs_review` item is Liquid Death Severed Lime.
+
+---
+
+### Phase 4.2: Live Weekly Cart Readiness + Manual Review System - Next Active Phase
+
+Goal:
+Make the weekly cart workflow safe enough to run live by adding a review-oriented summary, live-run safeguards, and clearer manual review handling.
+
+Rules:
+- Autonomy should mean safe and reliable, not reckless.
+- Do not force every item to select.
+- Low-confidence items must remain out of the live cart add path.
+- `needs_review` items must stay separate and actionable.
+- Liquid Death can remain `needs_review` if Kroger does not provide a confident flavored/sparkling Liquid Death product.
+- Live runs may add confident selected items only.
+- Final checkout must always happen manually in King Soopers.
 
 ---
 

@@ -11,6 +11,24 @@ from weekly_cart_builder import WeeklyCartBuilderError, build_weekly_cart_plan
 settings = load_config()
 kroger_client = KrogerClient(settings)
 
+KNOWN_ACCEPTABLE_MANUAL_REVIEW_TERMS = {
+    "liquid death severed lime",
+}
+KNOWN_ACCEPTABLE_MANUAL_REVIEW_STAPLE_IDS = {
+    "liquid_death_flavored_water",
+}
+CORE_STANDING_STAPLE_IDS = {
+    "liquid_death_flavored_water",
+    "arizona_green_tea",
+    "daves_killer_bread",
+    "boars_head_deli_meat",
+    "tillamook_sliced_cheese",
+}
+MANUAL_CHECKOUT_REMINDER = (
+    "Review the real King Soopers cart manually before checkout. "
+    "This app never checks out or places an order."
+)
+
 
 def create_app(client=None):
     client = client or kroger_client
@@ -202,30 +220,136 @@ def create_app(client=None):
         if dry_run_error:
             return jsonify(dry_run_error), 400
 
-        try:
-            plan = build_weekly_cart_plan()
-        except WeeklyCartBuilderError as exc:
-            return jsonify({"status": "error", "message": str(exc)}), 500
-
-        cart_items = plan["cart_items"]
-        summary = _process_cart_items(client, cart_items, dry_run)
-
-        return jsonify(
-            {
-                "dry_run": dry_run,
-                "meal_plan": plan["meal_plan"],
-                "cart_items": cart_items,
-                "cart_items_count": len(cart_items),
-                "attempted_count": summary["attempted_count"],
-                "selected": summary["selected"],
-                "added": summary["added"],
-                "needs_review": summary["needs_review"],
-                "failed": summary["failed"],
-                "notes": plan["notes"],
-            }
+        require_ready, require_ready_error = _parse_optional_bool_param(
+            request.args.get("require_ready"),
+            "require_ready",
         )
+        if require_ready_error:
+            return jsonify(require_ready_error), 400
+
+        response = _build_weekly_cart_response(client, dry_run, require_ready)
+        status_code = response.pop("_status_code", 200)
+        return jsonify(response), status_code
+
+    @app.route("/weekly_cart_preview")
+    def weekly_cart_preview():
+        response = _build_weekly_cart_response(client, dry_run=True, require_ready=None)
+        status_code = response.pop("_status_code", 200)
+        return jsonify(response), status_code
 
     return app
+
+
+def _build_weekly_cart_response(client, dry_run, require_ready):
+    try:
+        plan = build_weekly_cart_plan()
+    except WeeklyCartBuilderError as exc:
+        return {"status": "error", "message": str(exc), "_status_code": 500}
+
+    cart_items = plan["cart_items"]
+    selection_summary = _process_cart_items(client, cart_items, dry_run=True)
+    readiness_summary = _build_readiness_summary(selection_summary)
+
+    if dry_run:
+        return _weekly_cart_response_payload(
+            dry_run=True,
+            plan=plan,
+            cart_items=cart_items,
+            summary=selection_summary,
+            readiness_summary=readiness_summary,
+            require_ready=require_ready,
+        )
+
+    if not readiness_summary["ready_for_live_run"]:
+        blocked_summary = _summary_with_counts(
+            {
+                **selection_summary,
+                "dry_run": False,
+                "added": [],
+            }
+        )
+        return _weekly_cart_response_payload(
+            dry_run=False,
+            plan=plan,
+            cart_items=cart_items,
+            summary=blocked_summary,
+            readiness_summary=readiness_summary,
+            status="blocked",
+            message=(
+                "Weekly cart live run blocked before adding anything because "
+                "the readiness check is not acceptable."
+            ),
+            require_ready=require_ready,
+        )
+
+    live_summary = _add_selected_items_to_cart(client, selection_summary)
+    live_summary["dry_run"] = False
+    live_summary = _summary_with_counts(live_summary)
+
+    return _weekly_cart_response_payload(
+        dry_run=False,
+        plan=plan,
+        cart_items=cart_items,
+        summary=live_summary,
+        readiness_summary=readiness_summary,
+        status="live_run_complete",
+        message=MANUAL_CHECKOUT_REMINDER,
+        require_ready=require_ready,
+    )
+
+
+def _weekly_cart_response_payload(
+    dry_run,
+    plan,
+    cart_items,
+    summary,
+    readiness_summary,
+    status=None,
+    message=None,
+    require_ready=None,
+):
+    notes = list(plan["notes"])
+    notes.append(readiness_summary["live_run_guidance"])
+    if not dry_run:
+        notes.append(MANUAL_CHECKOUT_REMINDER)
+
+    payload = {
+        "dry_run": dry_run,
+        "require_ready": require_ready,
+        "meal_plan": plan["meal_plan"],
+        "cart_items": cart_items,
+        "cart_items_count": len(cart_items),
+        "attempted_count": summary["attempted_count"],
+        "selected_count": summary["selected_count"],
+        "added_count": summary["added_count"],
+        "needs_review_count": summary["needs_review_count"],
+        "failed_count": summary["failed_count"],
+        "not_added_count": summary["not_added_count"],
+        "selected": summary["selected"],
+        "added": summary["added"],
+        "needs_review": summary["needs_review"],
+        "failed": summary["failed"],
+        "manual_review_items": _manual_review_items(summary["needs_review"]),
+        "notes": notes,
+        "readiness_summary": readiness_summary,
+    }
+
+    if status:
+        payload["status"] = status
+    if message:
+        payload["message"] = message
+    if not dry_run:
+        payload["live_run_summary"] = {
+            "selected_count": summary["selected_count"],
+            "added_count": summary["added_count"],
+            "needs_review_count": summary["needs_review_count"],
+            "failed_count": summary["failed_count"],
+            "not_added_count": summary["not_added_count"],
+            "manual_review_items": _manual_review_items(summary["needs_review"]),
+            "message": MANUAL_CHECKOUT_REMINDER,
+        }
+
+    return payload
 
 
 def _process_cart_items(client, items, dry_run):
@@ -290,7 +414,160 @@ def _process_cart_items(client, items, dry_run):
                 failed_item["cart_response"] = cart_response.text
             summary["failed"].append(failed_item)
 
+    return _summary_with_counts(summary)
+
+
+def _add_selected_items_to_cart(client, selection_summary):
+    summary = {
+        "dry_run": False,
+        "attempted_count": selection_summary["attempted_count"],
+        "selected": list(selection_summary["selected"]),
+        "added": [],
+        "needs_review": list(selection_summary["needs_review"]),
+        "failed": list(selection_summary["failed"]),
+    }
+
+    for selected_item in selection_summary["selected"]:
+        upc = selected_item["upc"]
+        quantity = selected_item["quantity"]
+        try:
+            cart_response, _payload = client.add_to_cart(upc, quantity)
+        except KrogerApiError as exc:
+            failed_item = {
+                **selected_item,
+                "status": "cart_error",
+                "message": str(exc),
+            }
+            summary["failed"].append(failed_item)
+            continue
+
+        added_item = {
+            **selected_item,
+            "cart_status": cart_response.status_code,
+        }
+
+        if cart_response.status_code in {200, 201, 204}:
+            summary["added"].append(added_item)
+        else:
+            failed_item = {
+                **added_item,
+                "status": "cart_error",
+                "message": "Kroger cart add failed.",
+            }
+            if cart_response.text:
+                failed_item["cart_response"] = cart_response.text
+            summary["failed"].append(failed_item)
+
+    return _summary_with_counts(summary)
+
+
+def _summary_with_counts(summary):
+    summary["selected_count"] = len(summary["selected"])
+    summary["added_count"] = len(summary["added"])
+    summary["needs_review_count"] = len(summary["needs_review"])
+    summary["failed_count"] = len(summary["failed"])
+    summary["not_added_count"] = max(
+        summary["attempted_count"] - summary["added_count"],
+        0,
+    )
     return summary
+
+
+def _build_readiness_summary(summary):
+    selected_count = len(summary["selected"])
+    needs_review = summary["needs_review"]
+    failed = summary["failed"]
+    blocking_issues = []
+    warning_issues = []
+
+    if failed:
+        blocking_issues.append("One or more items failed during search or validation.")
+    if selected_count == 0:
+        blocking_issues.append("No confident product matches were selected.")
+
+    core_manual_review_items = [
+        item for item in needs_review if item.get("staple_id") in CORE_STANDING_STAPLE_IDS
+    ]
+    unknown_manual_review_items = [
+        item for item in needs_review if not _is_known_acceptable_manual_review_item(item)
+    ]
+
+    if len(core_manual_review_items) > 1:
+        blocking_issues.append(
+            "Multiple core standing staples need manual review; inspect the dry run before live add."
+        )
+    elif unknown_manual_review_items:
+        blocking_issues.append(
+            "One or more manual-review items are not on the known acceptable skip list."
+        )
+
+    if needs_review:
+        warning_issues.append(
+            "Manual-review items will not be added during a live run."
+        )
+
+    ready_for_live_run = not blocking_issues
+    if ready_for_live_run:
+        if needs_review:
+            guidance = (
+                "Ready for a live run only for confident selected items. "
+                "Manual-review items will be skipped and must be handled in King Soopers if desired. "
+                f"{MANUAL_CHECKOUT_REMINDER}"
+            )
+        else:
+            guidance = (
+                "Ready for a live run. Only confident selected items will be added. "
+                f"{MANUAL_CHECKOUT_REMINDER}"
+            )
+    else:
+        guidance = (
+            "Do not run the weekly cart live add yet. Inspect the dry-run output, "
+            "resolve blocking issues, and retry dry_run=true first."
+        )
+
+    return {
+        "ready_for_live_run": ready_for_live_run,
+        "selected_count": selected_count,
+        "needs_review_count": len(needs_review),
+        "failed_count": len(failed),
+        "blocking_issues": blocking_issues,
+        "warnings": warning_issues,
+        "manual_review_items": _manual_review_items(needs_review),
+        "live_run_guidance": guidance,
+    }
+
+
+def _manual_review_items(needs_review):
+    return [
+        {
+            "term": item.get("term"),
+            "original_term": item.get("original_term") or item.get("term"),
+            "conceptual_item": item.get("conceptual_item"),
+            "conceptual_group": item.get("conceptual_group"),
+            "search_term": item.get("search_term"),
+            "fallback_used": item.get("fallback_used", False),
+            "reason": item.get("reason"),
+            "best_candidate_description": item.get("best_candidate_description"),
+            "best_candidate_brand": item.get("best_candidate_brand"),
+            "best_candidate_upc": item.get("best_candidate_upc"),
+            "best_candidate_confidence": item.get("best_candidate_confidence"),
+            "confidence": item.get("confidence"),
+            "suggested_manual_action": item.get("suggested_manual_action"),
+        }
+        for item in needs_review
+    ]
+
+
+def _is_known_acceptable_manual_review_item(item):
+    term = _manual_review_key(item.get("term") or item.get("original_term"))
+    return (
+        term in KNOWN_ACCEPTABLE_MANUAL_REVIEW_TERMS
+        or item.get("staple_id") in KNOWN_ACCEPTABLE_MANUAL_REVIEW_STAPLE_IDS
+    )
+
+
+def _manual_review_key(value):
+    return " ".join(str(value or "").lower().split())
 
 
 def _parse_dry_run_param(value):
@@ -303,6 +580,22 @@ def _parse_dry_run_param(value):
     return None, {
         "status": "error",
         "message": "dry_run must be true or false.",
+    }
+
+
+def _parse_optional_bool_param(value, name):
+    if value is None:
+        return None, None
+
+    normalized = str(value).strip().lower()
+    if normalized in {"true", "1", "yes", "y"}:
+        return True, None
+    if normalized in {"false", "0", "no", "n"}:
+        return False, None
+
+    return None, {
+        "status": "error",
+        "message": f"{name} must be true or false.",
     }
 
 
@@ -427,6 +720,7 @@ def _select_product_for_item(client, parsed_item):
         attempts.append(
             {
                 "search_term": search_term,
+                "fallback_used": search_index > 0,
                 "confidence": selection_result["item"]["confidence"],
                 "reason": selection_result["item"]["reason"],
                 "candidates": selection_result["item"]["candidates"],
@@ -444,7 +738,7 @@ def _select_product_for_item(client, parsed_item):
         "fallback_terms": parsed_item.get("fallback_terms", []),
         "fallback_attempts": attempts,
     }
-    _copy_item_metadata(parsed_item, review_item)
+    _enrich_needs_review_item(review_item, parsed_item, best_attempt)
 
     return {"status": "needs_review", "item": review_item}
 
@@ -534,12 +828,22 @@ def _select_product_for_term(
             "index": index,
             "term": original_term,
             "search_term": search_term,
+            "fallback_used": fallback_used,
             "quantity": quantity,
             "confidence": selection["confidence"],
             "reason": selection["reason"],
             "candidates": selection["candidates"],
         }
-        _copy_item_metadata(item_metadata, review_item)
+        _enrich_needs_review_item(
+            review_item,
+            item_metadata,
+            {
+                "search_term": search_term,
+                "fallback_used": fallback_used,
+                "confidence": selection["confidence"],
+                "candidates": selection["candidates"],
+            },
+        )
         return {
             "status": "needs_review",
             "item": review_item,
@@ -566,6 +870,56 @@ def _copy_item_metadata(source, destination):
     for optional_key in ("staple_id", "staple_name"):
         if optional_key in source:
             destination[optional_key] = source[optional_key]
+
+
+def _enrich_needs_review_item(item, item_metadata=None, best_attempt=None):
+    _copy_item_metadata(item_metadata, item)
+
+    item["original_term"] = item.get("original_term") or item.get("term")
+    if item.get("staple_name"):
+        item["conceptual_item"] = item["staple_name"]
+    if item.get("staple_id"):
+        item["conceptual_group"] = "standing_staple"
+
+    if best_attempt:
+        item["search_term"] = best_attempt.get("search_term") or item.get("search_term")
+        item["fallback_used"] = best_attempt.get("fallback_used", item.get("fallback_used", False))
+        item["confidence"] = best_attempt.get("confidence", item.get("confidence", 0))
+        if best_attempt.get("candidates") is not None:
+            item["candidates"] = best_attempt["candidates"]
+    else:
+        item["fallback_used"] = item.get("fallback_used", False)
+
+    best_candidate = _best_candidate(item.get("candidates", []))
+    if best_candidate:
+        item["best_candidate_description"] = best_candidate.get("description")
+        item["best_candidate_brand"] = best_candidate.get("brand")
+        item["best_candidate_upc"] = best_candidate.get("upc")
+        item["best_candidate_confidence"] = best_candidate.get("confidence")
+
+    item["suggested_manual_action"] = _suggested_manual_action(item)
+    return item
+
+
+def _best_candidate(candidates):
+    if isinstance(candidates, list) and candidates:
+        first_candidate = candidates[0]
+        if isinstance(first_candidate, dict):
+            return first_candidate
+    return {}
+
+
+def _suggested_manual_action(item):
+    if _is_known_acceptable_manual_review_item(item):
+        return (
+            "Search/add Liquid Death flavored sparkling water manually in King Soopers "
+            "if desired, or accept skipping this drink slot for this run."
+        )
+
+    return (
+        "Review this item manually in King Soopers. Add a matching product only if it "
+        "is clearly correct, otherwise skip it for this run."
+    )
 
 
 def _selected_item_summary(
