@@ -32,9 +32,32 @@ The following features are already confirmed working and should be preserved:
 - `/stores` works and returns live Kroger / King Soopers store data.
 - `/search?term=...` works and returns live product data.
 - `/cart/add?upc=...&quantity=1` works.
+- `/cart/add_many` POST endpoint is implemented.
+- `/cart/add_many` supports `dry_run=true` and `dry_run=false`.
+- `dry_run=true` previews selected products without touching the real cart.
+- `dry_run=false` adds only confident matches to the real cart.
+- Low-confidence matches go to `needs_review`.
+- Invalid items go to `failed`.
+- A live `/cart/add_many` test with Cherry Coke Zero was confirmed in the real King Soopers cart.
+- The verified Cherry Coke Zero product was Coca-Cola® Zero Sugar Cherry Soda Cans, UPC `0004900004751`, `cart_status` `204`.
 - Real cart insertion into the user's actual King Soopers cart has been confirmed.
 
 Do not break these behaviors during refactors.
+
+---
+
+## Verified Phase 3 Behavior
+
+- Endpoint: `POST /cart/add_many`
+- Accepts JSON with `dry_run` and `items`.
+- Response includes `dry_run`, `attempted_count`, `selected`, `added`, `needs_review`, and `failed`.
+- `dry_run=true` previews selected products without touching the real cart.
+- `dry_run=false` adds only confident matches to the real cart.
+- Low-confidence matches go to `needs_review`.
+- Invalid items go to `failed`.
+- Live mode must never checkout or place an order.
+- The user manually verifies the real King Soopers cart after live tests.
+- Live verification confirmed Cherry Coke Zero selected Coca-Cola® Zero Sugar Cherry Soda Cans, UPC `0004900004751`, with `cart_status` `204`.
 
 ---
 
@@ -332,33 +355,43 @@ If selection confidence is low, do not add automatically. Return manual review.
 
 ---
 
-### Phase 3: Add `/cart/add_many`
+### Phase 3: Add `/cart/add_many` - Complete
 
 Goal:
 Batch-add multiple grocery items.
 
-Endpoint should accept JSON payload like:
+Status:
+- Complete and live verified against the real King Soopers cart.
+- Verified live item: Cherry Coke Zero selected Coca-Cola® Zero Sugar Cherry Soda Cans, UPC `0004900004751`, with `cart_status` `204`.
+
+Endpoint accepts JSON payload like:
 
 ```json
-[
-  {"term": "Cherry Coke Zero 12 pack", "quantity": 1},
-  {"term": "Liquid Death Severed Lime", "quantity": 1},
-  {"term": "Dave's Killer Bread", "quantity": 1}
-]
+{
+  "dry_run": true,
+  "items": [
+    {"term": "Cherry Coke Zero 12 pack", "quantity": 1},
+    {"term": "Liquid Death Severed Lime", "quantity": 1},
+    {"term": "Dave's Killer Bread", "quantity": 1}
+  ]
+}
 ```
 
 Behavior:
 1. Loop through items.
 2. Search.
 3. Rank/select.
-4. Add to cart.
-5. Return added/failed/needs_review summary.
+4. In `dry_run=true`, preview selected products without touching the real cart.
+5. In `dry_run=false`, add only confident matches to the real cart.
+6. Put low-confidence matches in `needs_review`.
+7. Put invalid items or errors in `failed`.
+8. Return `selected`, `added`, `needs_review`, and `failed` summary.
 
-Must support dry-run mode before live adding.
+Live mode must never checkout or place an order. The user manually reviews and approves checkout inside King Soopers.
 
 ---
 
-### Phase 4: Weekly Cart MVP
+### Phase 4: Weekly Cart MVP - Next Active Phase
 
 Goal:
 Build a weekly cart from a reusable grocery profile.
@@ -524,9 +557,7 @@ Prompt:
 ```text
 Read codex_context.md.
 
-Refactor the current Flask app into a cleaner structure while preserving all confirmed working behavior.
-
-Then implement /cart/add_by_term.
+Start Phase 4: Weekly Cart MVP.
 
 Requirements:
 - Preserve OAuth login and callback.
@@ -534,16 +565,18 @@ Requirements:
 - Preserve /stores.
 - Preserve /search?term=...
 - Preserve /cart/add?upc=...&quantity=...
-- Add /cart/add_by_term?term=...&quantity=...
-- Product search should use existing preferred store filtering if present.
-- Product selector should choose the best match conservatively.
-- If confidence is low, do not add to cart; return needs_review.
+- Preserve /cart/add_by_term?term=...&quantity=...
+- Preserve /cart/add_many dry-run and live behavior.
+- Add a reusable weekly cart builder in small, testable increments.
+- Start with dry-run weekly cart generation before any live adds.
+- Use grocery profile and meal template files if added.
+- Product search should use existing preferred store filtering where available.
+- Product selection should remain conservative.
+- If confidence is low, send the item to needs_review.
+- Live mode must never checkout or place an order.
 - Never print access_token or refresh_token.
-- Add or update .gitignore to exclude .env, tokens.json, venv, __pycache__, and .DS_Store.
-- After changes, provide exact test URLs and expected outputs.
+- After changes, provide exact test commands and expected outputs.
 
-Do not implement build_weekly_cart yet.
-Do not add pantry memory yet.
 Do not add a dashboard yet.
 Do not change OAuth scopes unless absolutely necessary.
 ```
@@ -569,9 +602,10 @@ Avoid broad refactors and new features in the same step unless explicitly reques
 
 The next milestone is complete when:
 
-1. Project has cleaner structure.
-2. Existing routes still work.
-3. `/cart/add_by_term?term=Cherry Coke Zero&quantity=1` works.
-4. The selected product appears in the actual King Soopers cart.
-5. No tokens or secrets are printed.
-6. The app returns a clear summary of what was selected and added.
+1. Existing routes still work.
+2. `/cart/add_many` dry-run and live behavior still work.
+3. `/build_weekly_cart?dry_run=true` or equivalent Phase 4 dry-run flow generates a structured weekly cart plan.
+4. The weekly plan includes dinners, sandwich support, drinks, and staples from the household profile.
+5. Low-confidence items are sent to `needs_review` instead of being added automatically.
+6. No tokens or secrets are printed.
+7. Live cart adds, if enabled later, never checkout or place an order.
