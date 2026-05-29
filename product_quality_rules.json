@@ -1,0 +1,179 @@
+{
+  "version": 1,
+  "reject_rules": [
+    {
+      "id": "no_taco_bell_seasoning_packets",
+      "applies_to": {
+        "terms_any": ["seasoning"]
+      },
+      "reject_if": {
+        "text_any": ["taco bell"]
+      },
+      "reason": "Taco Bell branded seasoning packets are excluded by user preference."
+    },
+    {
+      "id": "no_minute_or_instant_rice",
+      "applies_to": {
+        "terms_any": ["rice"]
+      },
+      "reject_if": {
+        "text_any": [
+          "minute rice",
+          "minute",
+          "instant",
+          "instant rice",
+          "ready rice",
+          "ready",
+          "ready to serve",
+          "microwave",
+          "microwave rice",
+          "microwavable rice",
+          "rice cups"
+        ]
+      },
+      "reason": "Rice should be uncooked; Minute, instant, microwave, and ready-to-serve rice are excluded."
+    },
+    {
+      "id": "arizona_zero_or_diet_only",
+      "applies_to": {
+        "terms_any": ["arizona"]
+      },
+      "reject_unless": {
+        "text_any": ["zero sugar", "zero", "diet"]
+      },
+      "reason": "Arizona tea must be zero sugar or diet."
+    },
+    {
+      "id": "no_super_sweet_corn",
+      "applies_to": {
+        "terms_any": ["corn"]
+      },
+      "reject_if": {
+        "text_any": ["super sweet", "supersweet"]
+      },
+      "reason": "Super sweet corn is excluded by user preference."
+    }
+  ],
+  "score_adjustment_rules": [
+    {
+      "id": "uncooked_rice_preferred",
+      "applies_to": {
+        "terms_any": ["rice"]
+      },
+      "adjust_if": {
+        "text_any": ["long grain", "white rice", "jasmine rice", "basmati rice", "uncooked"]
+      },
+      "score_adjustment": 0.08,
+      "note": "Prefer uncooked rice products."
+    },
+    {
+      "id": "ground_beef_80_20_preferred",
+      "applies_to": {
+        "terms_all": ["ground", "beef"]
+      },
+      "adjust_if": {
+        "text_all": ["80", "20"]
+      },
+      "score_adjustment": 0.14,
+      "note": "Prefer 80/20 ground beef by default."
+    },
+    {
+      "id": "ground_beef_grass_fed_not_default",
+      "applies_to": {
+        "terms_all": ["ground", "beef"]
+      },
+      "adjust_if": {
+        "text_any": ["grass fed", "grass-fed"],
+        "sale_price": false
+      },
+      "score_adjustment": -0.14,
+      "note": "Do not prefer grass-fed ground beef unless sale or price data shows a deal."
+    },
+    {
+      "id": "boars_head_turkey_preferred",
+      "applies_to": {
+        "terms_any": ["boar", "turkey", "deli meat", "deli turkey"]
+      },
+      "adjust_if": {
+        "brand_any": ["boar's head", "boars head"]
+      },
+      "score_adjustment": 0.12,
+      "note": "Prefer Boar's Head deli meat when available."
+    },
+    {
+      "id": "budget_salmon_formats_preferred",
+      "applies_to": {
+        "terms_any": ["salmon"]
+      },
+      "adjust_if": {
+        "text_any": ["atlantic salmon", "farm raised", "farm-raised", "frozen"]
+      },
+      "score_adjustment": 0.06,
+      "note": "Prefer budget-conscious salmon formats when no preferred brand is specified."
+    },
+    {
+      "id": "premium_salmon_not_default",
+      "applies_to": {
+        "terms_any": ["salmon"]
+      },
+      "adjust_if": {
+        "text_any": ["sockeye", "king salmon", "wild caught", "wild-caught", "coho"]
+      },
+      "score_adjustment": -0.10,
+      "note": "Avoid premium salmon by default unless specifically requested."
+    },
+    {
+      "id": "mainstream_pasta_quality_preferred",
+      "applies_to": {
+        "terms_any": ["pasta", "penne", "spaghetti", "linguine", "fettuccine", "rigatoni"]
+      },
+      "adjust_if": {
+        "brand_any": ["barilla", "de cecco", "private selection", "rao's", "raos"]
+      },
+      "score_adjustment": 0.07,
+      "note": "Prefer quality mainstream pasta."
+    },
+    {
+      "id": "expensive_specialty_pasta_not_default",
+      "applies_to": {
+        "terms_any": ["pasta", "penne", "spaghetti", "linguine", "fettuccine", "rigatoni"]
+      },
+      "adjust_if": {
+        "text_any": ["organic", "gluten free", "artisan", "imported"]
+      },
+      "score_adjustment": -0.04,
+      "note": "Do not prioritize expensive specialty pasta by default."
+    },
+    {
+      "id": "standard_corn_preferred",
+      "applies_to": {
+        "terms_any": ["corn"]
+      },
+      "adjust_if": {
+        "text_any": ["frozen corn", "whole kernel corn", "yellow corn"]
+      },
+      "score_adjustment": 0.07,
+      "note": "Prefer standard frozen or canned corn."
+    }
+  ],
+  "relative_price_rules": [
+    {
+      "id": "salmon_budget_conscious_price",
+      "applies_to": {
+        "terms_any": ["salmon"]
+      },
+      "mode": "prefer_lower_price",
+      "max_adjustment": 0.08,
+      "note": "Use available price data to avoid the highest-cost salmon option."
+    },
+    {
+      "id": "pasta_avoid_highest_price",
+      "applies_to": {
+        "terms_any": ["pasta", "penne", "spaghetti", "linguine", "fettuccine", "rigatoni"]
+      },
+      "mode": "avoid_highest_price",
+      "max_adjustment": 0.05,
+      "note": "Avoid selecting the highest-priced pasta option when similar alternatives exist."
+    }
+  ]
+}

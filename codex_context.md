@@ -46,7 +46,11 @@ The following features are already confirmed working and should be preserved:
 - Phase 4.1 Standing Staples Resolution Fix is complete and committed in `8328c24 Improve standing staple fallback resolution`.
 - Phase 4.1 improved the weekly cart dry run from 22 selected / 5 `needs_review` / 0 `failed` to 26 selected / 1 `needs_review` / 0 `failed`.
 - The only current weekly cart dry-run `needs_review` item is `Liquid Death Severed Lime`.
-- `/build_weekly_cart?dry_run=false` exists but has intentionally not been live-tested yet.
+- Phase 4.3 Controlled Live Weekly Cart Verification is complete.
+- `/build_weekly_cart?dry_run=false&require_ready=true` successfully added 26 selected items to the user's real King Soopers cart.
+- Liquid Death Severed Lime remained manual review and was not added.
+- The user reviewed the real cart and said it looked solid overall, but several product-quality preferences need tuning.
+- No code changes were made during Phase 4.3 verification.
 - Real cart insertion into the user's actual King Soopers cart has been confirmed.
 
 Do not break these behaviors during refactors.
@@ -98,6 +102,80 @@ Do not break these behaviors during refactors.
   - `needs_review` items must remain separate.
   - Final checkout must always happen manually in King Soopers.
 - Live weekly cart mode should add only confident matches, skip `needs_review` items, and must never checkout or place an order.
+
+---
+
+## Verified Phase 4.3 Controlled Live Weekly Cart Behavior
+
+- Phase 4.3 Controlled Live Weekly Cart Verification is complete.
+- Endpoint: `GET /build_weekly_cart?dry_run=false&require_ready=true`
+- The live run successfully added 26 selected items to the user's real King Soopers cart.
+- Liquid Death Severed Lime remained in `needs_review` and was not added.
+- The user reviewed the real cart and said it looked solid overall.
+- Product-quality preferences from that real-cart audit should drive the next implementation phase.
+- No code changes were made during Phase 4.3 verification.
+
+---
+
+## Phase 5 Cart Audit Notes
+
+Next active phase:
+
+```text
+Phase 5: Product Quality Rules + Quantity/Selection Tuning
+```
+
+User preferences from the Phase 4.3 real-cart audit:
+
+1. Coke Zero:
+   - Current selection was good.
+   - Right size and right flavor.
+
+2. Arizona Tea:
+   - Current fallback was good.
+   - Perfect fallback is Diet Green Iced Tea cans.
+   - Only buy zero sugar or diet beverages.
+   - If no zero/diet Arizona tea is available, do not buy another Arizona tea.
+
+3. Turkey/Deli Meat:
+   - Prefer Boar's Head.
+   - Private Selection turkey is acceptable only if no Boar's Head option is available.
+
+4. Seasoning Packets:
+   - Never buy Taco Bell branded seasoning packets.
+   - Taco/Mexican seasoning packets are fine conceptually, but choose another brand.
+
+5. Cotija Cheese:
+   - Cotija is acceptable if the recipe calls for it.
+
+6. Rice:
+   - Never buy Minute Rice.
+   - Always buy uncooked rice.
+   - Prefer white rice unless a recipe explicitly requires a different rice.
+
+7. Chicken:
+   - Chicken selection was good, but the system added two different chicken cuts.
+   - Only buy one chicken product per weekly cart unless the meal plan explicitly requires multiple different chicken preparations.
+   - Avoid multiple cuts of the same species/protein unless intentionally required.
+
+8. Salmon:
+   - Salmon was good but too expensive.
+   - For products/product types without a specified preferred brand, prefer budget-conscious options.
+   - Do not default to premium/expensive salmon unless specifically requested.
+
+9. Pasta:
+   - Protein pasta is acceptable.
+   - Prefer high-quality pasta, but not the most expensive pasta.
+
+10. Ground Beef:
+    - Ground beef was fine.
+    - Grass-fed is liked only if on sale or price-competitive.
+    - Otherwise prefer 80/20 ground beef.
+
+11. Corn:
+    - Frozen vegetables are acceptable.
+    - Do not buy "super sweet" corn.
+    - Normal frozen corn is fine when a recipe calls for corn.
 
 ---
 
@@ -314,10 +392,13 @@ Liquid Death slot:
 
 Arizona tea slot:
 1. Arizona Green Tea Zero Sugar Jug
-2. Arizona Diet Green Tea
-3. Arizona Green Tea Jug
-4. Gold Peak Zero Sugar Tea
-5. Pure Leaf Zero Sugar Tea
+2. Arizona Diet Green Tea Cans
+3. Arizona Diet Green Iced Tea Cans
+4. Arizona Zero Sugar Green Tea
+5. Arizona Diet Green Tea
+6. AriZona Zero Sugar Green Tea
+
+Only zero sugar or diet Arizona tea should be auto-selected. If no zero/diet Arizona option is available, send the item to manual review instead of buying a regular Arizona tea.
 
 Sandwich meat:
 1. Boar's Head Ovengold Turkey
@@ -497,10 +578,13 @@ Status:
 
 ---
 
-### Phase 4.2: Live Weekly Cart Readiness + Manual Review System - Next Active Phase
+### Phase 4.2: Live Weekly Cart Readiness + Manual Review System - Complete
 
 Goal:
 Make the weekly cart workflow safe enough to run live by adding a review-oriented summary, live-run safeguards, and clearer manual review handling.
+
+Status:
+- Complete and committed in `dab5ae7 Add weekly cart readiness and manual review safeguards`.
 
 Rules:
 - Autonomy should mean safe and reliable, not reckless.
@@ -513,7 +597,39 @@ Rules:
 
 ---
 
-### Phase 5: Store and Availability Intelligence
+### Phase 4.3: Controlled Live Weekly Cart Verification - Complete
+
+Goal:
+Run the weekly cart live add only after readiness safeguards confirm the dry-run output is acceptable.
+
+Status:
+- Complete.
+- `/build_weekly_cart?dry_run=false&require_ready=true` added 26 selected items to the user's real King Soopers cart.
+- Liquid Death Severed Lime stayed in manual review and was not added.
+- The user reviewed the real cart and said it looked solid overall.
+- No code changes were made during Phase 4.3 verification.
+
+---
+
+### Phase 5: Product Quality Rules + Quantity/Selection Tuning - Next Active Phase
+
+Goal:
+Apply Phase 4.3 cart-audit preferences so the next weekly dry run selects products closer to what the user would actually buy.
+
+Rules:
+- Use data-driven product-quality rules where possible.
+- Exclude Taco Bell seasoning packets, Minute Rice, Super Sweet corn, and non-diet/non-zero Arizona tea from automatic selection.
+- Prefer uncooked white rice unless a recipe explicitly requires another rice.
+- Prefer Boar's Head turkey, with Private Selection turkey only as a lower-priority fallback.
+- Buy one chicken product for the MVP weekly cart unless templates explicitly require distinct chicken preparations.
+- Prefer budget-conscious salmon and avoid defaulting to premium salmon without a reason.
+- Prefer 80/20 ground beef unless grass-fed is sale-priced or price-competitive.
+- Protein pasta is acceptable, but do not prioritize expensive specialty pasta by default.
+- Keep Liquid Death in `needs_review` unless Kroger returns a confident flavored/sparkling Liquid Death match.
+
+---
+
+### Later Phase: Store and Availability Intelligence
 
 Goals:
 - Use preferred store ID consistently.
@@ -534,7 +650,7 @@ Do not assume store ID permanently if a route can verify or update it.
 
 ---
 
-### Phase 6: Substitution Engine
+### Later Phase: Substitution Engine
 
 Files:
 - `substitution_rules.json`
@@ -547,7 +663,7 @@ Behavior:
 
 ---
 
-### Phase 7: Pantry Memory
+### Later Phase: Pantry Memory
 
 File:
 - `pantry.json`
@@ -578,7 +694,7 @@ Use pantry memory to avoid buying unnecessary staples.
 
 ---
 
-### Phase 8: Meal History and Preference Learning
+### Later Phase: Meal History and Preference Learning
 
 File:
 - `meal_history.json`
@@ -597,7 +713,7 @@ Rules:
 
 ---
 
-### Phase 9: Budget Awareness
+### Later Phase: Budget Awareness
 
 Goal:
 Keep weekly haul near $100–150.
@@ -615,7 +731,7 @@ Example:
 
 ---
 
-### Phase 10: Simple Local Dashboard
+### Later Phase: Simple Local Dashboard
 
 Goal:
 Make the app pleasant to use in a browser.
@@ -638,14 +754,11 @@ Priority:
 
 ## Immediate Next Codex Task
 
-The next task for Codex should be limited and precise.
-
-Prompt:
+The next active implementation phase is:
 
 ```text
-Read codex_context.md.
-
-Start Phase 4.1: Standing Staples Resolution Fix.
+Phase 5: Product Quality Rules + Quantity/Selection Tuning
+```
 
 Requirements:
 - Preserve OAuth login and callback.
@@ -656,22 +769,18 @@ Requirements:
 - Preserve /cart/add_by_term?term=...&quantity=...
 - Preserve /cart/add_many dry-run and live behavior.
 - Preserve /build_weekly_cart?dry_run=true.
+- Preserve /build_weekly_cart?dry_run=false with readiness safeguards.
 - Do not run /build_weekly_cart?dry_run=false unless explicitly requested after dry-run inspection.
-- Add ordered fallback search terms for standing staples that landed in needs_review.
-- Add at most one selected product per conceptual staple.
-- Product search should use existing preferred store filtering where available.
-- Product selection should remain conservative.
-- If confidence is low, send the item to needs_review.
+- Apply Phase 5 cart-audit preferences through data-driven product-quality rules where possible.
+- If confidence is low or a product violates user preference rules, send the item to `needs_review`.
 - Live mode must never checkout or place an order.
 - Never print access_token or refresh_token.
-- After changes, provide exact test commands and expected outputs.
 
 Do not add pantry memory yet.
 Do not add meal history yet.
 Do not add a dashboard yet.
-Do not implement price optimization yet.
+Do not implement full price optimization yet.
 Do not change OAuth scopes unless absolutely necessary.
-```
 
 ---
 

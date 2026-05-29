@@ -330,6 +330,8 @@ def _weekly_cart_response_payload(
         "needs_review": summary["needs_review"],
         "failed": summary["failed"],
         "manual_review_items": _manual_review_items(summary["needs_review"]),
+        "audit_notes": _audit_notes(plan, summary),
+        "product_quality_notes": _product_quality_notes(summary),
         "notes": notes,
         "readiness_summary": readiness_summary,
     }
@@ -552,10 +554,61 @@ def _manual_review_items(needs_review):
             "best_candidate_upc": item.get("best_candidate_upc"),
             "best_candidate_confidence": item.get("best_candidate_confidence"),
             "confidence": item.get("confidence"),
+            "quality_notes": item.get("quality_notes", []),
+            "rejected_candidates": item.get("rejected_candidates", []),
             "suggested_manual_action": item.get("suggested_manual_action"),
         }
         for item in needs_review
     ]
+
+
+def _audit_notes(plan, summary):
+    notes = []
+    cart_audit_notes = plan.get("cart_audit_notes") or []
+    notes.extend(cart_audit_notes)
+
+    rejected_count = sum(
+        len(item.get("rejected_candidates", []))
+        for item in summary["selected"] + summary["needs_review"]
+    )
+    if rejected_count:
+        notes.append(
+            f"Product quality rules rejected {rejected_count} candidate product(s)."
+        )
+
+    fallback_count = sum(1 for item in summary["selected"] if item.get("fallback_used"))
+    if fallback_count:
+        notes.append(f"Used fallback search terms for {fallback_count} selected item(s).")
+
+    if summary["needs_review"]:
+        notes.append("Manual-review items were not included in selected products.")
+
+    return notes
+
+
+def _product_quality_notes(summary):
+    quality_items = []
+    for status_key in ("selected", "needs_review"):
+        for item in summary[status_key]:
+            quality_notes = item.get("quality_notes", [])
+            rejected_candidates = item.get("rejected_candidates", [])
+            if not quality_notes and not rejected_candidates:
+                continue
+
+            quality_items.append(
+                {
+                    "status": status_key,
+                    "term": item.get("term"),
+                    "search_term": item.get("search_term"),
+                    "selected_product": item.get("selected_product"),
+                    "brand": item.get("brand"),
+                    "upc": item.get("upc"),
+                    "quality_notes": quality_notes,
+                    "rejected_candidates": rejected_candidates,
+                }
+            )
+
+    return quality_items
 
 
 def _is_known_acceptable_manual_review_item(item):
@@ -664,10 +717,24 @@ def _parse_add_many_item(index, item):
         "fallback_terms": fallback_terms,
     }
 
-    for optional_key in ("staple_id", "staple_name"):
+    for optional_key in ("staple_id", "staple_name", "protein_group"):
         optional_value = item.get(optional_key)
         if isinstance(optional_value, str) and optional_value.strip():
             parsed_item[optional_key] = optional_value.strip()
+
+    for optional_key in ("protein_deduped",):
+        if item.get(optional_key) is True:
+            parsed_item[optional_key] = True
+
+    merged_terms = item.get("merged_terms")
+    if isinstance(merged_terms, list):
+        clean_merged_terms = [
+            term.strip()
+            for term in merged_terms
+            if isinstance(term, str) and term.strip()
+        ]
+        if clean_merged_terms:
+            parsed_item["merged_terms"] = clean_merged_terms
 
     return parsed_item, None
 
@@ -724,6 +791,11 @@ def _select_product_for_item(client, parsed_item):
                 "confidence": selection_result["item"]["confidence"],
                 "reason": selection_result["item"]["reason"],
                 "candidates": selection_result["item"]["candidates"],
+                "rejected_candidates": selection_result["item"].get(
+                    "rejected_candidates",
+                    [],
+                ),
+                "quality_notes": selection_result["item"].get("quality_notes", []),
             }
         )
 
@@ -735,6 +807,8 @@ def _select_product_for_item(client, parsed_item):
         "confidence": best_attempt["confidence"] if best_attempt else 0,
         "reason": "No primary or fallback search term matched confidently enough to add.",
         "candidates": best_attempt["candidates"] if best_attempt else [],
+        "rejected_candidates": best_attempt["rejected_candidates"] if best_attempt else [],
+        "quality_notes": best_attempt["quality_notes"] if best_attempt else [],
         "fallback_terms": parsed_item.get("fallback_terms", []),
         "fallback_attempts": attempts,
     }
@@ -833,6 +907,8 @@ def _select_product_for_term(
             "confidence": selection["confidence"],
             "reason": selection["reason"],
             "candidates": selection["candidates"],
+            "rejected_candidates": selection.get("rejected_candidates", []),
+            "quality_notes": selection.get("quality_notes", []),
         }
         _enrich_needs_review_item(
             review_item,
@@ -842,6 +918,8 @@ def _select_product_for_term(
                 "fallback_used": fallback_used,
                 "confidence": selection["confidence"],
                 "candidates": selection["candidates"],
+                "rejected_candidates": selection.get("rejected_candidates", []),
+                "quality_notes": selection.get("quality_notes", []),
             },
         )
         return {
@@ -867,7 +945,13 @@ def _copy_item_metadata(source, destination):
     if not source:
         return
 
-    for optional_key in ("staple_id", "staple_name"):
+    for optional_key in (
+        "staple_id",
+        "staple_name",
+        "protein_group",
+        "protein_deduped",
+        "merged_terms",
+    ):
         if optional_key in source:
             destination[optional_key] = source[optional_key]
 
@@ -887,6 +971,10 @@ def _enrich_needs_review_item(item, item_metadata=None, best_attempt=None):
         item["confidence"] = best_attempt.get("confidence", item.get("confidence", 0))
         if best_attempt.get("candidates") is not None:
             item["candidates"] = best_attempt["candidates"]
+        if best_attempt.get("rejected_candidates") is not None:
+            item["rejected_candidates"] = best_attempt["rejected_candidates"]
+        if best_attempt.get("quality_notes") is not None:
+            item["quality_notes"] = best_attempt["quality_notes"]
     else:
         item["fallback_used"] = item.get("fallback_used", False)
 
@@ -944,6 +1032,10 @@ def _selected_item_summary(
         "confidence": selection["confidence"],
         "reason": selection["reason"],
     }
+    if selection.get("quality_notes"):
+        item["quality_notes"] = selection["quality_notes"]
+    if selection.get("rejected_candidates"):
+        item["rejected_candidates"] = selection["rejected_candidates"]
     _copy_item_metadata(item_metadata, item)
     return item
 

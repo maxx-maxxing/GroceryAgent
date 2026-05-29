@@ -63,6 +63,7 @@ def build_weekly_cart_plan(
     return {
         "meal_plan": [_meal_summary(meal) for meal in selected_meals],
         "cart_items": cart_items,
+        "cart_audit_notes": dedupe_notes,
         "notes": notes,
     }
 
@@ -198,6 +199,14 @@ def _parse_cart_item(item, source_label, substitutions):
         )
 
     parsed_item = {"term": term.strip(), "quantity": quantity}
+    for optional_key in (
+        "distinct_product_required",
+        "separate_required",
+        "separate_product_required",
+    ):
+        if item.get(optional_key) is True:
+            parsed_item[optional_key] = True
+
     substitution = substitutions.get(_dedupe_key(parsed_item["term"]))
     if substitution:
         parsed_item.update(substitution)
@@ -211,7 +220,7 @@ def _deduplicate_cart_items(items):
     notes = []
 
     for item in items:
-        key = _dedupe_key(item["term"])
+        key = _dedupe_key_for_item(item)
         if key not in index_by_key:
             index_by_key[key] = len(deduped)
             deduped.append(dict(item))
@@ -219,6 +228,20 @@ def _deduplicate_cart_items(items):
 
         existing = deduped[index_by_key[key]]
         existing["quantity"] += item["quantity"]
+        protein_group = _protein_group_key(item)
+        if protein_group:
+            existing["protein_deduped"] = True
+            existing["protein_group"] = protein_group
+            existing.setdefault("merged_terms", [existing["term"]])
+            if item["term"] not in existing["merged_terms"]:
+                existing["merged_terms"].append(item["term"])
+            notes.append(
+                "Merged chicken protein term "
+                f"'{item['term']}' into '{existing['term']}' "
+                f"for quantity {existing['quantity']}."
+            )
+            continue
+
         if existing["term"] == item["term"]:
             notes.append(
                 f"Combined duplicate term '{item['term']}' to quantity {existing['quantity']}."
@@ -231,6 +254,59 @@ def _deduplicate_cart_items(items):
             )
 
     return deduped, notes
+
+
+def _dedupe_key_for_item(item):
+    protein_key = _protein_dedupe_key(item)
+    if protein_key:
+        return protein_key
+    return _dedupe_key(item["term"])
+
+
+def _protein_dedupe_key(item):
+    protein_group = _protein_group_key(item)
+    if not protein_group:
+        return None
+    return f"protein:{protein_group}"
+
+
+def _protein_group_key(item):
+    if _requires_distinct_product(item):
+        return None
+
+    key = _dedupe_key(item["term"])
+    tokens = set(key.split())
+
+    if "chicken" not in tokens:
+        return None
+
+    excluded_tokens = {
+        "bouillon",
+        "breaded",
+        "broth",
+        "nugget",
+        "nuggets",
+        "rotisserie",
+        "sausage",
+        "seasoning",
+        "soup",
+        "stock",
+    }
+    if tokens.intersection(excluded_tokens):
+        return None
+
+    return "chicken"
+
+
+def _requires_distinct_product(item):
+    return any(
+        item.get(key) is True
+        for key in (
+            "distinct_product_required",
+            "separate_required",
+            "separate_product_required",
+        )
+    )
 
 
 def _dedupe_key(term):

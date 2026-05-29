@@ -16,14 +16,14 @@
     },
     {
       "id": "arizona_green_tea",
-      "name": "Arizona Green Tea jug, preferably zero sugar",
+      "name": "Arizona zero sugar or diet green tea",
       "primary_term": "Arizona Green Tea Zero Sugar Jug",
       "fallback_terms": [
+        "Arizona Diet Green Tea Cans",
+        "Arizona Diet Green Iced Tea Cans",
+        "Arizona Zero Sugar Green Tea",
         "Arizona Diet Green Tea",
-        "Arizona Green Tea Jug",
-        "AriZona Green Tea",
-        "Gold Peak Zero Sugar Tea",
-        "Pure Leaf Zero Sugar Tea"
+        "AriZona Zero Sugar Green Tea"
       ]
     },
     {
